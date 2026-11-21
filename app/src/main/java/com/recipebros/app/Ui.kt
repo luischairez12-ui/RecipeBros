@@ -80,6 +80,7 @@ fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit) {
     var draft by remember { mutableStateOf<Recipe?>(null) }
     var importMessage by remember { mutableStateOf("") }
     var importing by remember { mutableStateOf(false) }
+    var onlineSuggestions by remember { mutableStateOf<List<RecipeSuggestion>>(emptyList()) }
     var search by remember { mutableStateOf("") }
     var cookStep by remember { mutableIntStateOf(0) }
     var pantryInput by rememberSaveable { mutableStateOf("") }
@@ -101,6 +102,7 @@ fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit) {
         editReturnPage = page
         draft = recipe ?: Recipe(title = "")
         importMessage = ""
+        onlineSuggestions = emptyList()
         page = Page.EDIT
         drawerOpen = false
     }
@@ -125,11 +127,13 @@ fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit) {
         page = Page.EDIT
         drawerOpen = false
         importMessage = "Importing shared link..."
+        onlineSuggestions = emptyList()
         importing = true
         scope.launch {
             try {
                 val result = RecipeImporter.import(text)
                 draft = result.recipe
+                onlineSuggestions = result.suggestions
                 importMessage = result.status
             } finally { importing = false }
         }
@@ -261,15 +265,31 @@ fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit) {
                             Page.EDIT -> RecipeEditor(
                                 initial = draft ?: Recipe(title = ""),
                                 message = importMessage, importing = importing,
+                                suggestions = onlineSuggestions,
                                 onBack = { navigate(editReturnPage) },
                                 onFetch = { url ->
                                     importing = true
                                     importMessage = "Reading recipe website..."
+                                    onlineSuggestions = emptyList()
                                     scope.launch {
                                         try {
                                             val result = RecipeImporter.import(url)
                                             draft = result.recipe
+                                            onlineSuggestions = result.suggestions
                                             importMessage = result.status
+                                        } finally { importing = false }
+                                    }
+                                },
+                                onFindSimilar = { title ->
+                                    importing = true
+                                    onlineSuggestions = emptyList()
+                                    importMessage = "Looking for similar recipes and ingredients..."
+                                    scope.launch {
+                                        try {
+                                            onlineSuggestions = RecipeFinder.search(title)
+                                            importMessage = if (onlineSuggestions.isEmpty())
+                                                "No confident recipe match found. Try a simpler dish name, such as 'chicken curry', or add ingredients yourself."
+                                            else "Similar recipes found below. These are alternatives, NOT verified ingredients from the original video."
                                         } finally { importing = false }
                                     }
                                 },
@@ -733,9 +753,12 @@ private fun RecipeListPage(recipes: List<Recipe>, mamaOnly: Boolean, onOpen: (Re
 }
 
 @Composable
-private fun RecipeEditor(initial: Recipe, message: String, importing: Boolean, onBack: () -> Unit,
-                         onFetch: (String) -> Unit, onSave: (Recipe) -> Unit) {
+private fun RecipeEditor(initial: Recipe, message: String, importing: Boolean,
+                         suggestions: List<RecipeSuggestion>, onBack: () -> Unit,
+                         onFetch: (String) -> Unit, onFindSimilar: (String) -> Unit,
+                         onSave: (Recipe) -> Unit) {
     val tap = LocalTapFeedback.current
+    val context = LocalContext.current
     var title by remember(initial) { mutableStateOf(initial.title) }
     var url by remember(initial) { mutableStateOf(initial.sourceUrl) }
     var ingredients by remember(initial) { mutableStateOf(initial.ingredients.joinToString("\n")) }
@@ -768,6 +791,47 @@ private fun RecipeEditor(initial: Recipe, message: String, importing: Boolean, o
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Recipe name *") },
             singleLine = true, isError = showValidation && title.isBlank())
+        Spacer(Modifier.height(7.dp))
+        OutlinedButton(onClick = { tap(); onFindSimilar(title) },
+            enabled = !importing && title.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Rounded.Search, null); Spacer(Modifier.width(7.dp))
+            Text(if (importing) "Searching..." else "Find similar recipes & missing ingredients")
+        }
+        if (suggestions.isNotEmpty()) {
+            Spacer(Modifier.height(9.dp))
+            Surface(color = Sage, shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Possible recipe matches", fontWeight = FontWeight.Bold, color = DeepPine)
+                    Text("These recipes are from a DIFFERENT source. Compare them to your video before using; amounts and cooking instructions may differ.",
+                        fontSize = 12.sp, color = Muted)
+                    suggestions.forEach { candidate ->
+                        Surface(color = Color.White, shape = RoundedCornerShape(12.dp)) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text(candidate.title, fontWeight = FontWeight.SemiBold)
+                                Text("Source: ${candidate.provider} • ${candidate.ingredients.size} ingredients", fontSize = 12.sp, color = Muted)
+                                Text(candidate.ingredients.take(3).joinToString(" · "), fontSize = 11.sp,
+                                    color = Muted, maxLines = 3)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = {
+                                        tap()
+                                        if (title.isBlank() || title.startsWith("Recipe from", true)) title = candidate.title
+                                        if (ingredients.isBlank()) ingredients = candidate.ingredients.joinToString("\n")
+                                        if (steps.isBlank()) steps = candidate.steps.joinToString("\n")
+                                        val sourceNote = "Alternative reference: ${candidate.title} (${candidate.provider}): ${candidate.referenceUrl}. Similar recipe; not verified to match the shared video."
+                                        if (!notes.contains(sourceNote)) notes = listOf(notes, sourceNote).filter(String::isNotBlank).joinToString("\n")
+                                    }) { Text("Fill missing details") }
+                                    TextButton(onClick = {
+                                        tap()
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(candidate.referenceUrl))
+                                        runCatching { context.startActivity(intent) }
+                                    }) { Text("Source") }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(9.dp))
         OutlinedTextField(ingredients, { ingredients = it }, Modifier.fillMaxWidth().heightIn(min = 125.dp),
             label = { Text("Ingredients — one per line") }, placeholder = { Text("2 cups rice\n1 tomato\n1 onion") }, minLines = 4)

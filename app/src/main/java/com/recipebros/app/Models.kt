@@ -19,4 +19,17 @@ data class Recipe(
 
 data class GroceryItem(val id: Long = 0, val text: String, val checked: Boolean = false)
 
-data class ImportResult(val recipe: Recipe, val status: String)
+data class RecipeSuggestion(
+    val title: String,
+    val ingredients: List<String>,
+    val steps: List<String>,
+    val provider: String,
+    val referenceUrl: String,
+    val similarity: Double
+)
+
+data class ImportResult(
+    val recipe: Recipe,
+    val status: String,
+    val suggestions: List<RecipeSuggestion> = emptyList()
+)

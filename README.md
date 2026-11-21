@@ -4,6 +4,16 @@
 
 Native Android app built with Kotlin, Jetpack Compose, SQLite, and Jsoup. Design: premium white/sage-green UI with a signature **right-edge pull-out tool tab**. Dedicated warm **Las Recetas de Mamá ❤️** cookbook for recipes from Monterrey and Zacatecas.
 
+## Batch 3 — Smart missing-ingredients lookup (prototype)
+
+- First attempts the original recipe page, including schema.org Recipe, microdata, and explicitly labeled ingredient lines in accessible public captions.
+- If ingredient lines or directions are absent, attempts a second-source search using a usable dish name found in the shared caption or page title.
+- A new **Find similar recipes & missing ingredients** button lets you enter/edit a dish name, search for recipe matches, inspect their source and ingredient preview, then **Fill missing details** without overwriting any ingredients or instructions you already entered.
+- Alternative-source recipe information is **never silently merged** into the saved recipe. When selected, the source and a warning are recorded in the recipe's notes; the original Facebook/TikTok/website URL is preserved.
+- If a video link hides its title/caption, the app cannot know what food is in the video just from that opaque URL; enter the dish name to look up similar recipes. This is recipe lookup, **not video recognition or AI analysis**.
+- Development search currently uses TheMealDB public V1 test key to look up a small library of meals (most dishes won't have a match). TheMealDB's terms require a supporter/production key for an app-store release. The API call goes directly from the Android phone to TheMealDB; no Recipe Bros server or user account is required.
+- The match ranking is word overlap, not a guarantee the suggested recipe matches the shared video. Always check quantities, allergies, and food-safe cooking temperatures before using any suggestion.
+
 ## What's new in Batch 2 — Compact UI & Smart Dock
 
 - Compact home screen: shorter branding header, one-line greeting, tighter search and quick tiles, and a 128dp family cookbook feature (down from a much taller panel).

@@ -12,8 +12,8 @@ android {
         applicationId = "com.recipebros.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0-batch2"
+        versionCode = 3
+        versionName = "1.2.0-batch3"
     }
 
     buildTypes {

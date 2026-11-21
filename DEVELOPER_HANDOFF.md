@@ -22,3 +22,11 @@ Rules for future work: preserve package/application ID, DB schema and migration 
 - Do not bring back a bottom navigation bar. Keep the Recipe Bros brand wordmark and family's Monterrey/Zacatecas section.
 - APK app id remains `com.recipebros.app` and SQLite schema is unchanged. versionCode 2, versionName 1.1.0-batch2.
 - QA: test status bar clearance, tiny phone/font scaling, orientation, movable tab on different screen heights, navigation/back, all FAB actions, haptics toggle & click sound, recipe import, data preservation across update, and cook-step transitions. Source still has not been compiled here.
+
+
+## Batch 3 / 2026-11-21: Smart recipe-match fallback
+- Added RecipeFinder.kt (TheMealDB V1 test key, dev-only; app-store releases require paid supporter key).
+- RecipeImporter now checks publicly available explicit caption ingredients and automatically looks for similar meals when ingredients/steps are missing and a usable dish name is known.
+- RecipeEditor adds manual "Find similar recipes" and candidates with attribution. Users must select "Fill missing details"; does not overwrite populated fields. Source reference recorded in notes. Original link always retained.
+- Critical: Facebook video ID alone cannot reveal recipe if post/caption inaccessible. Never claim automatic video recognition. Never silently treat a similar recipe as the original recipe.
+- No SQLite schema change, applicationId unchanged. Version 3.

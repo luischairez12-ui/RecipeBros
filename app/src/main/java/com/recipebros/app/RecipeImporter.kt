@@ -20,7 +20,8 @@ object RecipeImporter {
             return@withContext ImportResult(Recipe(title = "New recipe", sourceUrl = url), "Add a valid http(s) recipe link, or fill the recipe manually.")
         }
         val host = uri.host.removePrefix("www.")
-        try {
+        val sharedCaption = linkOrSharedText.replace(url, " ").trim()
+        val result = try {
             val document = Jsoup.connect(url)
                 .userAgent("Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/125 Mobile Safari/537.36")
                 .followRedirects(true).timeout(13_000).maxBodySize(1_500_000).get()
@@ -36,27 +37,56 @@ object RecipeImporter {
                     sourceUrl = url, sourceLabel = host, ingredients = ingredients,
                     steps = steps, prepMinutes = prep, cookMinutes = cook, servings = servings
                 )
-                val status = if (ingredients.isNotEmpty() && steps.isNotEmpty())
-                    "Recipe extracted from structured website data. Please check quantities and instructions before cooking."
-                else "Only part of this recipe was available. Review and complete it before saving."
-                ImportResult(recipe, status)
+                ImportResult(recipe, if (ingredients.isNotEmpty() && steps.isNotEmpty())
+                    "Recipe extracted from its original website. Check quantities and cooking safety."
+                else "The original page has incomplete ingredients or directions.")
             } else {
-                val ingredients = document.select("[itemprop=recipeIngredient]").map { it.text().trim() }.filter { it.isNotBlank() }
-                val steps = document.select("[itemprop=recipeInstructions]").map { it.text().trim() }.filter { it.isNotBlank() }
+                val htmlIngredients = document.select("[itemprop=recipeIngredient]").map { it.text().trim() }
+                val htmlSteps = document.select("[itemprop=recipeInstructions]").map { it.text().trim() }
+                // Public posts sometimes put explicit ingredients in OG descriptions.
+                // Only read lines after an explicit Ingredients/Ingredientes label; don't invent missing amounts.
+                val caption = document.selectFirst("meta[property=og:description]")?.attr("content").orEmpty()
+                val captionIngredients = if (htmlIngredients.isEmpty()) explicitCaptionIngredients(caption) else emptyList()
+                val rawTitle = metaTitle(document, host)
+                val safeTitle = RecipeFinder.usableDishName(rawTitle)
+                    ?: RecipeFinder.usableDishName(sharedCaption)
+                    ?: "Recipe from $host"
                 val recipe = Recipe(
-                    title = metaTitle(document, host), sourceUrl = url, sourceLabel = host,
-                    ingredients = ingredients, steps = steps
+                    title = safeTitle, sourceUrl = url, sourceLabel = host,
+                    ingredients = htmlIngredients.ifEmpty { captionIngredients }, steps = htmlSteps
                 )
-                ImportResult(recipe, if (ingredients.isEmpty() || steps.isEmpty())
-                    "Saved the link and available page title. This page may block recipe access or contain only video; add ingredients and steps manually."
-                else "Some recipe fields were found. Check them before saving.")
+                ImportResult(recipe, if (recipe.ingredients.isNotEmpty() && recipe.steps.isNotEmpty())
+                    "Extracted available information from the page. Check it before cooking."
+                else "Original post does not provide a complete recipe.")
             }
         } catch (_: Exception) {
-            ImportResult(
-                Recipe(title = "Recipe from $host", sourceUrl = url, sourceLabel = host),
-                "The website did not allow extraction or needs internet access. Your link is ready to save; add instructions manually."
-            )
+            val title = RecipeFinder.usableDishName(sharedCaption) ?: "Recipe from $host"
+            ImportResult(Recipe(title = title, sourceUrl = url, sourceLabel = host),
+                "This site blocked video details or could not be reached. Original link preserved.")
         }
+        if (result.recipe.ingredients.isNotEmpty() && result.recipe.steps.isNotEmpty()) {
+            return@withContext result
+        }
+        val titleForLookup = RecipeFinder.usableDishName(result.recipe.title)
+            ?: RecipeFinder.usableDishName(sharedCaption)
+        val alternatives = titleForLookup?.let { RecipeFinder.search(it) }.orEmpty()
+        if (alternatives.isEmpty()) {
+            result.copy(status = result.status +
+                " Enter the dish name below and tap 'Find similar recipes' to search another source.")
+        } else {
+            result.copy(suggestions = alternatives, status = result.status +
+                " Found ${alternatives.size} similar recipe option(s) from a separate source — compare and choose before using.")
+        }
+    }
+
+    private fun explicitCaptionIngredients(caption: String): List<String> {
+        val lines = caption.replace(" • ", "\n").replace("; ", "\n")
+            .lines().map { it.trim().trimStart('-', '*', '•').trim() }
+        val start = lines.indexOfFirst { it.matches(Regex("(?i)^(ingredients|ingredientes)\\s*:?\\s*$")) }
+        if (start < 0) return emptyList()
+        return lines.drop(start + 1).takeWhile {
+            it.isNotBlank() && !it.matches(Regex("(?i)^(steps|instructions|directions|preparaci[oó]n|instrucciones).*"))
+        }.take(30).filter { it.length in 2..160 }
     }
 
     private fun metaTitle(doc: Document, host: String): String =
