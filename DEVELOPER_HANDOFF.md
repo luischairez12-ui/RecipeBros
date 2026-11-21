@@ -1,3 +1,6 @@
+## Batch 5 implementation handoff
+Native Android Kotlin / Compose. Added VideoRecipeReader.kt: samples up to 16 local frames with MediaMetadataRetriever, performs on-device ML Kit OCR, returns timestamped text and conservative Ingredients/Steps parsing; possible measured lines are always opt-in. MainActivity accepts video/* shared file streams. Editor has picker, video OCR timeline and manual caption/transcript extraction. Same database schema and applicationId, versionCode 5. Do not claim automatic speech or object recognition; FB short share URL is not downloadable video data. Preserve local-only default. Verify physical-device file provider permissions and memory/performance.
+---
 ## Batch 4 — Screenshot recipe rescue
 ScreenshotRecipeReader.kt performs on-device ML Kit text recognition on up to eight user-selected photos. RecipeEditor supports import, text preview, conservative Ingredients/Steps parsing and append-only editing. UI never claims the video itself was read. No new DB fields. Version bumped to 4; artifact name updated. Future work: supported local video file OCR frames and optional transcription/vision where permitted; do not treat opaque Facebook URLs as video bytes.
 

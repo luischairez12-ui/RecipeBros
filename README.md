@@ -1,3 +1,25 @@
+# Recipe Bros 🍳 | Batch 5 — Smart Import 2.0
+
+## New in Batch 5
+- Choose local cooking videos and screen recordings using Android's media picker.
+- Android system Share → Recipe Bros supports shared video files as well as text links.
+- Scan 6–16 frames per video, detect visible English/Spanish text with on-device ML Kit OCR, and offer to merge clearly labeled Ingredients/Steps into the recipe.
+- Review timestamped video text and potential measured ingredient lines. Unlabeled possibilities are never silently added.
+- Paste captions or a manually obtained spoken transcript and extract clearly labeled ingredients/instructions.
+- Existing Facebook links, saved recipes, grocery lists, Cook Mode, family cookbook and smart right-edge dock are preserved.
+- No database migration. Same application ID; versionCode 5; GitHub Actions artifact RecipeBros-Batch5-APK.
+
+## Boundaries
+- Facebook share links by themselves often contain no accessible video. Video import requires a file the user is permitted to access.
+- This version reads TEXT visible in video frames; it does NOT listen to speech, identify food objects, or generate an entire recipe from video scenes.
+- On-device OCR scans sampled frames, so brief labels may be missed. Measurements and cooking safety must be reviewed.
+- No subscription, server, or uploaded video is required for local scanning. Existing recipe website imports and alternative recipe searches still use internet.
+- A future opt-in video+audio AI layer will require a compatible provider/model and appropriate cost/security/privacy controls.
+
+## Build
+Import `luischairez12-ui/RecipeBros` in BuildDeck, or download the latest successful artifact from GitHub Actions. This repo is the source of truth.
+
+---
 # Recipe Bros 🍳 | Batch 4 — Screenshot Recipe Rescue
 
 ## New: rescue Facebook recipes using screenshots

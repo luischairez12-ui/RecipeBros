@@ -67,7 +67,8 @@ private val LocalTapFeedback = staticCompositionLocalOf<() -> Unit> { {} }
 private data class DockItem(val icon: ImageVector, val title: String, val action: () -> Unit)
 
 @Composable
-fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit) {
+fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit,
+                  incomingVideo: Uri? = null, consumeIncomingVideo: () -> Unit = {}) {
     val context = LocalContext.current
     val view = LocalView.current
     val settings = remember { context.getSharedPreferences("recipe_bros_ui", 0) }
@@ -84,6 +85,7 @@ fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit) {
     var importMessage by remember { mutableStateOf("") }
     var importing by remember { mutableStateOf(false) }
     var onlineSuggestions by remember { mutableStateOf<List<RecipeSuggestion>>(emptyList()) }
+    var pendingSharedVideo by remember { mutableStateOf<Uri?>(null) }
     var search by remember { mutableStateOf("") }
     var cookStep by remember { mutableIntStateOf(0) }
     var pantryInput by rememberSaveable { mutableStateOf("") }
@@ -146,6 +148,13 @@ fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit) {
         if (!incomingText.isNullOrBlank()) {
             importShared(incomingText)
             consumeIncoming()
+        }
+    }
+    LaunchedEffect(incomingVideo) {
+        if (incomingVideo != null) {
+            openEditor()
+            pendingSharedVideo = incomingVideo
+            consumeIncomingVideo()
         }
     }
 
@@ -269,6 +278,8 @@ fun RecipeBrosApp(incomingText: String?, consumeIncoming: () -> Unit) {
                                 initial = draft ?: Recipe(title = ""),
                                 message = importMessage, importing = importing,
                                 suggestions = onlineSuggestions,
+                                autoVideo = pendingSharedVideo,
+                                consumeAutoVideo = { pendingSharedVideo = null },
                                 onBack = { navigate(editReturnPage) },
                                 onFetch = { url ->
                                     importing = true
@@ -757,7 +768,8 @@ private fun RecipeListPage(recipes: List<Recipe>, mamaOnly: Boolean, onOpen: (Re
 
 @Composable
 private fun RecipeEditor(initial: Recipe, message: String, importing: Boolean,
-                         suggestions: List<RecipeSuggestion>, onBack: () -> Unit,
+                         suggestions: List<RecipeSuggestion>, autoVideo: Uri?, consumeAutoVideo: () -> Unit,
+                         onBack: () -> Unit,
                          onFetch: (String) -> Unit, onFindSimilar: (String) -> Unit,
                          onSave: (Recipe) -> Unit) {
     val tap = LocalTapFeedback.current
@@ -773,6 +785,65 @@ private fun RecipeEditor(initial: Recipe, message: String, importing: Boolean,
     var region by remember(initial) { mutableStateOf(initial.region) }
     var notes by remember(initial) { mutableStateOf(initial.notes) }
     var showValidation by remember { mutableStateOf(false) }
+    var videoScanning by remember { mutableStateOf(false) }
+    var videoMessage by remember { mutableStateOf("") }
+    var videoMoments by remember { mutableStateOf("") }
+    var videoCandidates by remember { mutableStateOf<List<String>>(emptyList()) }
+    var captionText by remember(initial) { mutableStateOf("") }
+    var captionMessage by remember { mutableStateOf("") }
+    val videoScope = rememberCoroutineScope()
+
+    fun appendLines(current: String, lines: List<String>): String =
+        (current.lines().map(String::trim).filter(String::isNotBlank) + lines)
+            .map(String::trim).filter(String::isNotBlank)
+            .distinctBy { it.lowercase() }.joinToString("\n")
+
+    fun scanVideo(uri: Uri) {
+        if (videoScanning) return
+        videoScanning = true
+        videoMessage = "Reading text shown in the video (not speech)..."
+        videoMoments = ""
+        videoCandidates = emptyList()
+        videoScope.launch {
+            try {
+                val result = VideoRecipeReader.scan(context, uri)
+                if (result.ingredients.isNotEmpty()) ingredients = appendLines(ingredients, result.ingredients)
+                if (result.instructions.isNotEmpty()) steps = appendLines(steps, result.instructions)
+                if (title.isBlank() || title.startsWith("Recipe from", true)) {
+                    result.titleHint?.let { title = it }
+                }
+                videoCandidates = result.possibleIngredientLines
+                videoMoments = result.moments.joinToString("\n\n") {
+                    "[" + it.second + "s]\n" + it.text
+                }.take(8000)
+                videoMessage = when {
+                    result.ingredients.isNotEmpty() || result.instructions.isNotEmpty() ->
+                        "Scanned " + result.sampledFrames + " frames. Added " +
+                            result.ingredients.size + " labeled ingredients and " +
+                            result.instructions.size + " steps. Verify everything before saving."
+                    result.possibleIngredientLines.isNotEmpty() ->
+                        "Found some possible measured ingredients. Review them before adding."
+                    result.readableFrames > 0 ->
+                        "Found on-screen writing but no clear ingredient list. Review the timeline below."
+                    else -> "No readable text in sampled frames. This tool does not hear narration or recognize food by sight. Try captions or a dish name."
+                }
+            } catch (error: Exception) {
+                videoMessage = "Couldn't scan video: " +
+                    (error.localizedMessage ?: "Unsupported format or missing permission")
+            } finally { videoScanning = false }
+        }
+    }
+
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) scanVideo(uri) }
+    LaunchedEffect(autoVideo) {
+        if (autoVideo != null) {
+            scanVideo(autoVideo)
+            consumeAutoVideo()
+        }
+    }
+
     var scanningScreenshots by remember { mutableStateOf(false) }
     var screenshotMessage by remember { mutableStateOf("") }
     var screenshotText by remember { mutableStateOf("") }
@@ -873,6 +944,89 @@ private fun RecipeEditor(initial: Recipe, message: String, importing: Boolean,
                     }
                 }) { Text("Keep scanned text in recipe notes") }
             }
+        }
+        Spacer(Modifier.height(10.dp))
+        Surface(color = Sage, shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.fillMaxWidth().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Video Chef — Smart Import 2.0", fontWeight = FontWeight.Bold, color = DeepPine)
+                Text("Choose a video or screen recording. Recipe Bros scans a few frames for visible ingredient text. It stays on your phone.",
+                    fontSize = 12.sp, color = Muted, lineHeight = 17.sp)
+                OutlinedButton(onClick = {
+                    tap()
+                    videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                }, enabled = !videoScanning && !importing, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.VideoLibrary, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (videoScanning) "Reading video frames..." else "Choose cooking video")
+                }
+                if (videoScanning) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                if (videoMessage.isNotBlank()) {
+                    Text(videoMessage, color = Terra, fontSize = 12.sp, lineHeight = 17.sp)
+                }
+                if (videoCandidates.isNotEmpty()) {
+                    Text("Possible ingredients — not confirmed:", color = DeepPine,
+                        fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    videoCandidates.take(12).forEach { item ->
+                        Text("• " + item, color = Ink, fontSize = 12.sp)
+                    }
+                    TextButton(onClick = {
+                        tap()
+                        ingredients = appendLines(ingredients, videoCandidates)
+                        videoMessage = "Added as editable suggestions. Check each measurement."
+                    }) { Text("Add these for review") }
+                }
+                if (videoMoments.isNotBlank()) {
+                    var expandTimeline by remember { mutableStateOf(false) }
+                    TextButton(onClick = { tap(); expandTimeline = !expandTimeline }) {
+                        Text(if (expandTimeline) "Hide text timeline" else "Review text timeline")
+                    }
+                    if (expandTimeline) {
+                        Text(videoMoments, color = Muted, fontSize = 12.sp,
+                            maxLines = 28, lineHeight = 17.sp)
+                        TextButton(onClick = {
+                            tap()
+                            val detail = "On-screen video text (not independently verified):\n" + videoMoments
+                            if (!notes.contains(detail)) notes =
+                                listOf(notes, detail).filter(String::isNotBlank).joinToString("\n\n")
+                        }) { Text("Keep text in notes") }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(9.dp))
+        OutlinedTextField(
+            value = captionText, onValueChange = { captionText = it },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 92.dp),
+            label = { Text("Paste captions or a video transcript") },
+            placeholder = { Text("Receta de arroz\nIngredientes:\n2 tazas de arroz\nPreparación:\n...") },
+            minLines = 3
+        )
+        OutlinedButton(onClick = {
+            tap()
+            val parsed = ScreenshotRecipeReader.parse(captionText)
+            if (parsed.ingredients.isNotEmpty()) ingredients = appendLines(ingredients, parsed.ingredients)
+            if (parsed.steps.isNotEmpty()) steps = appendLines(steps, parsed.steps)
+            if (title.isBlank() || title.startsWith("Recipe from", true)) {
+                parsed.titleHint?.let { title = it }
+            }
+            captionMessage = if (parsed.ingredients.isEmpty() && parsed.steps.isEmpty())
+                "No labeled Ingredients/Steps found. Paste the text into notes or enter a dish name to search for a similar recipe."
+            else "Added " + parsed.ingredients.size + " ingredients and " +
+                parsed.steps.size + " steps from pasted text. Verify accuracy."
+        }, enabled = captionText.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Rounded.TextSnippet, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Extract from pasted text")
+        }
+        if (captionMessage.isNotBlank()) {
+            Text(captionMessage, color = Terra, fontSize = 12.sp, lineHeight = 17.sp)
+            TextButton(onClick = {
+                tap()
+                val detail = "Pasted caption or transcript:\n" + captionText
+                if (!notes.contains(detail)) notes =
+                    listOf(notes, detail).filter(String::isNotBlank).joinToString("\n\n")
+            }) { Text("Keep original pasted text in notes") }
         }
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Recipe name *") },
