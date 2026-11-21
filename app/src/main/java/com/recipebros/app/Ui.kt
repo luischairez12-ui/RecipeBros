@@ -5,6 +5,9 @@ import android.net.Uri
 import android.view.HapticFeedbackConstants
 import android.view.SoundEffectConstants
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -770,6 +773,54 @@ private fun RecipeEditor(initial: Recipe, message: String, importing: Boolean,
     var region by remember(initial) { mutableStateOf(initial.region) }
     var notes by remember(initial) { mutableStateOf(initial.notes) }
     var showValidation by remember { mutableStateOf(false) }
+    var scanningScreenshots by remember { mutableStateOf(false) }
+    var screenshotMessage by remember { mutableStateOf("") }
+    var screenshotText by remember { mutableStateOf("") }
+    val screenshotScope = rememberCoroutineScope()
+    val screenshotPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(8)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            scanningScreenshots = true
+            screenshotMessage = "Reading visible text from " + uris.size + " screenshot(s)..."
+            screenshotScope.launch {
+                try {
+                    val results = uris.map { ScreenshotRecipeReader.scan(context, it) }
+                    val capturedIngredients = results.flatMap { it.ingredients }
+                    val capturedSteps = results.flatMap { it.steps }
+                    val oldIngredients = ingredients.lines().map { it.trim() }.filter { it.isNotBlank() }
+                    val oldSteps = steps.lines().map { it.trim() }.filter { it.isNotBlank() }
+                    if (capturedIngredients.isNotEmpty()) {
+                        ingredients = (oldIngredients + capturedIngredients)
+                            .distinctBy { it.lowercase() }.joinToString("\n")
+                    }
+                    if (capturedSteps.isNotEmpty()) {
+                        steps = (oldSteps + capturedSteps)
+                            .distinctBy { it.lowercase() }.joinToString("\n")
+                    }
+                    if (title.isBlank() || title.startsWith("Recipe from", ignoreCase = true)) {
+                        results.firstNotNullOfOrNull { it.titleHint }?.let { title = it }
+                    }
+                    screenshotText = results.map { it.recognizedText }
+                        .filter { it.isNotBlank() }.distinct().joinToString("\n\n---\n\n").take(6000)
+                    screenshotMessage = when {
+                        capturedIngredients.isNotEmpty() || capturedSteps.isNotEmpty() ->
+                            "Added clearly labeled ingredients/steps from your screenshots. Review OCR errors, measurements and cooking safety before saving."
+                        screenshotText.isNotBlank() ->
+                            "Text found, but no clearly labeled ingredient list. See extracted text below and type the dish name for a separate recipe search."
+                        else ->
+                            "No readable text found. Try a frame showing the ingredient list or captions. A food photo alone cannot identify the full recipe."
+                    }
+                } catch (error: Exception) {
+                    screenshotMessage = "Couldn't read that screenshot: " +
+                        (error.localizedMessage ?: "Please try a different image.")
+                } finally {
+                    scanningScreenshots = false
+                }
+            }
+        }
+    }
+
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         BrandHeader("Import from a link or write your own", onBack)
@@ -787,6 +838,41 @@ private fun RecipeEditor(initial: Recipe, message: String, importing: Boolean,
         if (message.isNotBlank()) {
             Spacer(Modifier.height(7.dp))
             Text(message, color = Terra, fontSize = 12.sp, lineHeight = 17.sp)
+        }
+        Spacer(Modifier.height(7.dp))
+        OutlinedButton(
+            onClick = {
+                tap()
+                screenshotPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            enabled = !scanningScreenshots && !importing,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Rounded.PhotoLibrary, null)
+            Spacer(Modifier.width(8.dp))
+            Text(if (scanningScreenshots) "Scanning screenshots..." else "Import screenshots / ingredient lists")
+        }
+        Text("Facebook video blocked? Save screenshots of the captions or ingredient list, then select them here. Text recognition runs on your phone.",
+            color = Muted, fontSize = 11.sp, lineHeight = 15.sp)
+        if (screenshotMessage.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(screenshotMessage, color = Terra, fontSize = 12.sp, lineHeight = 17.sp)
+        }
+        if (screenshotText.isNotBlank()) {
+            var showScanText by remember { mutableStateOf(false) }
+            TextButton(onClick = { tap(); showScanText = !showScanText }) {
+                Text(if (showScanText) "Hide scanned text" else "Review scanned text")
+            }
+            if (showScanText) {
+                Text(screenshotText, color = Ink, fontSize = 12.sp, maxLines = 20, lineHeight = 18.sp)
+                TextButton(onClick = {
+                    tap()
+                    val snippet = "Screenshot transcription (verify before cooking):\n" + screenshotText
+                    if (!notes.contains(snippet)) {
+                        notes = listOf(notes, snippet).filter { it.isNotBlank() }.joinToString("\n\n")
+                    }
+                }) { Text("Keep scanned text in recipe notes") }
+            }
         }
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Recipe name *") },

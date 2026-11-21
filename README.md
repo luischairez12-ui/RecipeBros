@@ -1,3 +1,14 @@
+# Recipe Bros 🍳 | Batch 4 — Screenshot Recipe Rescue
+
+## New: rescue Facebook recipes using screenshots
+
+- Import up to eight screenshots from your phone's photo picker in the recipe editor.
+- On-device ML Kit OCR reads visible English or Spanish text from images. Clearly labeled Ingredients/Ingredientes and Steps/Preparación/Instructions sections fill empty details or append nonduplicate lines.
+- Original Facebook/TikTok source links remain attached. Screenshot OCR is never presented as video analysis, audio transcription, ingredient object recognition, or a verified exact recipe.
+- If the screenshot only shows a dish or no labeled ingredients, the app shows its recognized text (if any) and asks for a dish name. The existing Find similar recipes feature can then search a separate recipe catalog.
+- No paid server or storage permission. Photo picker is user-initiated; OCR runs on-device. Check all quantities and cooking instructions.
+- Continue using the GitHub-first BuildDeck flow. Keep the same application ID and database schema to preserve locally saved recipes during a normal app update. versionCode is now 4.
+
 # Recipe Bros 🍳 | Batch 2 — Compact UI
 
 **Save • Cook • Learn • Share**

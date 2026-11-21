@@ -1,3 +1,6 @@
+## Batch 4 — Screenshot recipe rescue
+ScreenshotRecipeReader.kt performs on-device ML Kit text recognition on up to eight user-selected photos. RecipeEditor supports import, text preview, conservative Ingredients/Steps parsing and append-only editing. UI never claims the video itself was read. No new DB fields. Version bumped to 4; artifact name updated. Future work: supported local video file OCR frames and optional transcription/vision where permitted; do not treat opaque Facebook URLs as video bytes.
+
 # Recipe Bros Batch 2 – compact UI handoff
 
 Identity: Recipe Bros; clean white and sage green Modern Kitchen-inspired UI with warm terracotta Mama's recipe section representing Monterrey/Zacatecas; signature right-side pull-out tools tab. No Walmart branding, generic grocery list. Android package com.recipebros.app.

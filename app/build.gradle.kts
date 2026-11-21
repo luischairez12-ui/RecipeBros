@@ -12,8 +12,8 @@ android {
         applicationId = "com.recipebros.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0-batch3"
+        versionCode = 4
+        versionName = "1.3.0-batch4"
     }
 
     buildTypes {
@@ -40,5 +40,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jsoup:jsoup:1.18.3")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
